@@ -35,6 +35,22 @@ struct std_string *addStdString(struct std_string *head, char *string, struct st
 	}
 }
 
+void writeQuotesToFile(struct std_string *head) {
+	FILE *fp;
+	fp = fopen("quotes.txt", "w+");	
+	if (fp == NULL) {
+		return;
+	}
+
+	struct std_string *currStr = head;
+	while(currStr->next != head) {
+		fprintf(fp, "%s\n", currStr->string);
+		currStr = currStr->next;
+	}
+	fprintf(fp, "%s\n", currStr->string);
+	fclose(fp);
+}
+
 int nrOfQuotes(struct std_string *head) {
 	int count = 2;
 	struct std_string *currStr = head;
@@ -90,22 +106,22 @@ int getMessages(telebot_handler_t handle, int offset, struct std_settings* s) {
 				printf("Received text message\n");
 				printf("%s: %s\n", message.from->first_name, message.text);
 				
-				if (strstr(message.text, "/newstring")) {
-					char *newText = strchr(message.text, ' ');
-					if (newText != NULL) {
-						//Set new string
-						printf("New quote(s): %s\n", newText+1);
-						//strcpy(s->string, newText);
-						s->stringsHead = addStdString(s->stringsHead, newText+1, s);
-						//Return string
-						strcpy(returnString, "New quote(s) received\n"); 
-					}
-					else {
-						//User dit not type string after the command, ask for it now
-						strcpy(returnString, "No string specified. Please use the following syntax /newstring <string>.\n"); 
-					}
-				}
-				else if (strstr(message.text, "/shutdown")) {
+				//if (strstr(message.text, "/newstring")) {
+				//	char *newText = strchr(message.text, ' ');
+				//	if (newText != NULL) {
+				//		//Set new string
+				//		printf("New quote(s): %s\n", newText+1);
+				//		//strcpy(s->string, newText);
+				//		s->stringsHead = addStdString(s->stringsHead, newText+1, s);
+				//		//Return string
+				//		strcpy(returnString, "New quote(s) received\n"); 
+				//	}
+				//	else {
+				//		//User dit not type string after the command, ask for it now
+				//		strcpy(returnString, "No string specified. Please use the following syntax /newstring <string>.\n"); 
+				//	}
+				//}
+				if (strstr(message.text, "/shutdown")) {
 					//Get messages an extra time to let telegram know we got the message
 					offset = updates[index].update_id + 1;
 					ret = telebot_get_updates(handle, offset, 20, 0, NULL, 0, &updates, &count);
@@ -140,11 +156,11 @@ int getMessages(telebot_handler_t handle, int offset, struct std_settings* s) {
 					int quotenr = 0;
 					char tempstring[256];
 					if (head == NULL) {
-						strcpy(returnString, "no quotes added yet");
+						strcpy(returnString, "No quotes added yet");
 					}
 					else {
 						//Add all quotes to reply
-						strcpy(returnString, "ID: Quote:\n");
+						strcpy(returnString, "ID: Quote\n---------------\n");
 						while (curr->next != head) {
 							sprintf(tempstring, "%d: %s\n", quotenr, curr->string);
 							strcat(returnString, tempstring);
@@ -158,42 +174,48 @@ int getMessages(telebot_handler_t handle, int offset, struct std_settings* s) {
 				else if (strstr(message.text, "/deletequote")) {
 					printf("Deleting quote\n");
 					char *idString = strchr(message.text, ' ');
-					long id = strtol(idString, NULL, 10);
-					struct std_string* head = s->stringsHead;
-					struct std_string* curr = head;
-					if (head == NULL) {
-						strcpy(returnString, "no quotes added yet");
-					}
-					else {
-						if (id == 0) {
-							while (curr->next != head) {
-								curr = curr->next;
-							}
+					if (idString != NULL) {
+						long id = strtol(idString, NULL, 10);
+						struct std_string* head = s->stringsHead;
+						struct std_string* curr = head;
+						if (head == NULL) {
+							strcpy(returnString, "No quotes added yet");
 						}
 						else {
-							for (int i = 0; i < id-1; i++) {
-								curr = curr->next;
+							if (id == 0) {
+								while (curr->next != head) {
+									curr = curr->next;
+								}
 							}
+							else {
+								for (int i = 0; i < id-1; i++) {
+									curr = curr->next;
+								}
+							}
+							free(curr->next);
+							curr->next = curr->next->next;
+							strcpy(returnString, "Quote removed");
 						}
-						free(curr->next);
-						curr->next = curr->next->next;
-						strcpy(returnString, "Quote removed");
+						//Write quotes to file
+						writeQuotesToFile(s->stringsHead);
 					}
+					else {
+						strcpy(returnString, "Use the command as /removequote [ID]");
+					}
+
 				}
 				else {
-					//Set new string
-					//printf("New quote(s): %s\n", message.text);
-					//Loop over new quote(s)
+					//New quote
 					const char delim[2] = "\n";
 					char *quote;
 					quote = strtok(message.text, delim);
-					//printf("Adding quote: %s\n", quote);
-					//s->stringsHead = addStdString(s->stringsHead, quote, s);
 					while (quote != NULL) {
 						printf("Adding quote: %s\n", quote);
 						addStdString(s->stringsHead, quote, s);
 						quote = strtok(NULL, delim);
 					}
+					//Write quotes to file
+					writeQuotesToFile(s->stringsHead);
 					//Return string
 					strcpy(returnString, "New quote(s) received\n"); 
 				}
