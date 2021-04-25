@@ -16,193 +16,172 @@
  * limitations under the License.
  */
 
-#ifndef __TELEBOT_METHODS_H__
-#define __TELEBOT_METHODS_H__
+#ifndef __TELEBOT_CORE_API_H__
+#define __TELEBOT_CORE_API_H__
 
 #include <stdbool.h>
+#include <pthread.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @file        telebot-methods.h
- * @ingroup     TELEBOT_API
- * @brief       This file contains methods used to create telegram bot
+ * @file        telebot-core-api.h
+ * @ingroup     TELEBOT_CORE_API
+ * @brief       This file contains core API for the telegram bot interface
  * @author      Elmurod Talipov
  * @date        2020-04-19
+ * @version     4.7.0
  */
 
 /**
- * @addtogroup TELEBOT_API
+ * @defgroup TELEBOT_CORE_API Core Telegram Bot API
+ * @brief The APIs for the telegram bot interface, response is unparsed json sting.
+ *
+ *
+ * @addtogroup TELEBOT_CORE_API
  * @{
  */
 
 /**
- * @brief Initial function to use telebot APIs.
- *
- * This function must be used first to call, and it creates handler. This call
- * MUST have corresponding call to #telebot_destroy() when operation is complete.
- *
- * @param[out] handle Pointer to create telebot handler to use APIs, it must be
- * destroyed with #telebot_destroy().
- * @param[in] token Telegram Bot token to use.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @brief This object represents a core telebot handler.
  */
-telebot_error_e telebot_create(telebot_handler_t *handle, char *token);
+typedef struct telebot_core_handler {
+    char *token; /**< Telegam bot token */
+    char *proxy_addr;
+    char *proxy_auth;
+} telebot_core_handler_t;
 
 /**
- * @brief Final function to use telebo APIs
- *
- * This function must be the last function to call for a telebot use.
- * It is the opposite of the #telebot_create() function.
- *
- * @param[in] handle The telebot handler created with #telebot_create().
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @brief This object represents a telegram bot response.
  */
-telebot_error_e telebot_destroy(telebot_handler_t handle);
+typedef struct telebot_core_response {
+    size_t size; /**< Telegam bot response size */
+    char *data; /**< Telegam bot response object */
+} telebot_core_response_t;
 
 /**
- * @brief Set proxy address to use telebot behind proxy.
+ * @brief Start function to use telebot core APIs.
  *
- * @param[in] handle The telebot handler created with #telebot_create().
- * @param[in] addr Proxy address to use.
- * @param[in] auth Proxy authorization information.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * This function must be used first to call, and it creates handler that is used
+ * as input to other functions in telebot core interface. This call MUST have
+ * corresponding call to #telebot_core_destroy when operation is complete.
+ * @param core_h[in,out] A pointer to a handler, which will be allocated and created.
+ * Obtained handler MUST be released with #telebot_core_destroy()
+ * @param token[in] Telegram bot token to use.
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_set_proxy(telebot_handler_t handle, char *addr, char *auth);
+telebot_error_e telebot_core_create(telebot_core_handler_t **core_h, const char *token);
 
 /**
- * @brief Get proxy address currently used.
+ * @brief Final function to use telebot core APIs
  *
+ * This function must be the last function to call for a telebot core use.
+ * It is the opposite of the telebot_core_create function and MUST be called
+ * with the same handler as the input that a telebot_core_create call
+ * created.
+ * @param[in,out] core_h The A pointer to telebot core handler created with #telebot_core_create().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
+ */
+telebot_error_e telebot_core_destroy(telebot_core_handler_t **core_h);
+
+/**
+ * @brief Set proxy address to use telebot behind proxy
  *
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
+ * @param[in] addr Proxy address in full.
+ * @param[in] auth Proxy authorization informatio.
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
+ */
+telebot_error_e telebot_core_set_proxy(telebot_core_handler_t *core_h, const char *addr,
+        const char *auth);
+
+/**
+ * @brief Get currently used proxy address
+ *
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[out] addr Current proxy address or NULL, MUST be freed after use.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_get_proxy(telebot_handler_t handle, char **addr);
+telebot_error_e telebot_core_get_proxy(telebot_core_handler_t *core_h, char **addr);
 
 /**
- * @brief This function is used to get latest updates.
- *
- * @param[in] handle The telebot handler created with #telebot_create().
- * @param[in] offset Identifier of the first update to be returned. The
- * negative offset can be specified to retrieve updates starting from -offset
- * update from the end of the updates queue.
- * @param[in] limit Number of updates to be retrieved. Values between 1-100
- * are accepted. Defaults to 100.
- * @param[in] timeout Timeout in seconds for long polling.
- * Defaults to 0, i.e. usual short polling. Should be positive,
- * short polling should be used for testing purposes only.
- * @param[in] allowed_updates An array of types of updates you want your bot to receive.
- * Refers to #telebot_update_type_e.
- * @param[in] allowed_updates_count Number of update types.
- * @param[out] updates An array of update objects, it needs to be released with
- * #telebot_put_updates after use.
- * @param[out] count Number of updates received.
- * @return On success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @brief Receive incoming updates (long polling). It will not work if an outgoing
+ * webhook is set up. In order to avoid getting duplicate updates, recalculate
+ * offset after each server response.
+ * @param[in] core_h Telebot core handler creating using telebot_core_create().
+ * @param[in] offset Identifier of the first update to be returned. Must be greater
+ * by one than the highest among the identifiers of previously received updates.
+ * By default, updates starting with the earliest unconfirmed update are returned.
+ * An update is considered confirmed as soon as the function is called with an
+ * offset higher than its update_id.
+ * @param[in] limit Limits the number of updates to be retrieved. Values between
+ * 1—100 are accepted. Defaults to 100.
+ * @param[in] timeout Timeout in seconds for long polling. Defaults to 0, i.e. usual
+ * short polling.
+ * @param[in] allowed_updates List the types of update you want your bot to receive.
+ * Specify an empty list to receive all updates regardless of type (default).
+ * @param[out] response Response data, MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_get_updates(telebot_handler_t handle, int offset,
-        int limit, int timeout, telebot_update_type_e allowed_updates[],
-        int allowed_updates_count, telebot_update_t **updates, int *count);
+telebot_error_e telebot_core_get_updates(telebot_core_handler_t *core_h, int offset,
+        int limit, int timeout, const char *allowed_updates,
+        telebot_core_response_t *response);
 
 /**
- * @brief This function is used to release memory used for obtained updates.
- *
- * @param[int] updates Pointer to udpates obtained with #telebot_get_updates.
- * @param[int] count Number of updates obtained with #telebot_get_updates.
- * @return On success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
- */
-telebot_error_e telebot_put_updates(telebot_update_t *updates, int count);
-
-
-/**
- * @brief This function is used to specify a url and receive incoming updates
- * via an outgoing webhook. Whenever there is an update for the bot, we will
- * send an HTTPS POST request to the specified url, containing a JSON-serialized
- * Update. In case of an unsuccessful request, we will give up after a reasonable
- * amount of attempts.
- *
- * @param[in] handle The telebot handler created with #telebot_create().
- * @param[in] url HTTPS url to send updates to. Use an empty string to remove
- * webhook integration
+ * @brief Specify a url and receive incoming updates via an outgoing webhook.
+ * Whenever there is an update for the bot, we will send an HTTPS POST request
+ * to the specified url, containing a JSON-serialized Update. In case of an
+ * unsuccessful request, we will give up after a reasonable amount of attempts.
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
+ * @param[in] url HTTPS url to send updates to. Use an empty string to remove webhook
+ * integration
  * @param[in] certificate A path to to a public key certificate to upload server.
  * @param[in] max_connections Optional  Maximum allowed number of simultaneous
  * HTTPS connections to the webhook for update delivery, 1-100. Defaults to 40.
  * Use lower values to limit the load on your bot's server, and higher values
  * to increase your bot's throughput.
- * @param[in] allowed_updates Array of the update types you want your bot to
- * receive.
- * @param[in] allowed_updates_count Size of array of the update types.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[in] allowed_updates List the types of updates you want your bot to
+ * receive. For example, specify ["message", "edited_channel_post",
+ * "callback_query"] to only receive updates of these types.
+ * @param[out] response Response data, MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_set_webhook(telebot_handler_t handle, char *url,
-    char *certificate, int max_connections,telebot_update_type_e allowed_updates[],
-    int allowed_updates_count);
+telebot_error_e telebot_core_set_webhook(telebot_core_handler_t *core_h, const char *url,
+        const char *certificate, int max_connections, const char *allowed_updates,
+        telebot_core_response_t *response);
 
 /**
- * @brief This function is used to remove webhook integration if you decide to
- * switch back to getUpdates.
- *
- * @param[in] handle The telebot handler created with #telebot_create().
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @brief Remove webhook integration if you decide to switch back to getUpdates.
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
+ * @param[out] response Response data, MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_delete_webhook(telebot_handler_t handle);
-
+telebot_error_e telebot_core_delete_webhook(telebot_core_handler_t *core_h,
+        telebot_core_response_t *response);
 
 /**
- * @brief This function is used to get information about telegram bot itself.
- *
- * @param[in] handle The telebot handler created with #telebot_create().
- * @param[out] info Telegram webhoook information, it needs to be released with
- * #telebot_put_webhook_info after use.
- * @return On success, #TELEBOT_ERROR_NONE is returned, and webhook information is
- * stored in input parameter.
+ * @brief Get current webhook status.
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
+ * @param[out] response Response data, MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_get_webhook_info(telebot_handler_t handle,
-        telebot_webhook_info_t *info);
+telebot_error_e telebot_core_get_webhook_info(telebot_core_handler_t *core_h,
+        telebot_core_response_t *response);
 
 /**
- * @brief This function is used to release memory used for obtained information
- * about telegram bot itself.
- *
- * @param[in] info Telegram webhook information object obtained with
- * #telebot_get_webhook_info.
- * @return on Success, #TELEBOT_ERROR_NONE is returned.
+ * @brief Get basic information about the bot.
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
+ * @param[out] response Response data, MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_put_webhook_info(telebot_webhook_info_t *info);
-
-/**
- * @brief This function is used to get information about telegram bot itself.
- *
- * @param[in] handle The telebot handler created with #telebot_create().
- * @param[out] me Telegram user object, it needs to be released with
- * #telebot_put_me after use.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, and user object is
- * stored in input parameter.
- */
-telebot_error_e telebot_get_me(telebot_handler_t handle, telebot_user_t *me);
-
-/**
- * @brief This function is used to release memory used for obtained information
- * about telegram bot itself.
- *
- * @param[in] me Pointer to telegram user object obtained with #telebot_get_me.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- */
-telebot_error_e telebot_put_me(telebot_user_t *me);
+telebot_error_e telebot_core_get_me(telebot_core_handler_t *core_h,
+        telebot_core_response_t *response);
 
 /**
  * @brief Send text messages.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] text Text of the message to be sent, 1-4096 characters after entities parsing.
@@ -214,16 +193,18 @@ telebot_error_e telebot_put_me(telebot_user_t *me);
  * @param[in] reply_to_message_id If the message is a reply, ID of the original message.
  * @param[in] reply_markup Additional interface options. An object for a custom
  * reply keyboard, instructions to hide keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_message(telebot_handler_t handle, long long int chat_id,
-    const char *text, const char *parse_mode, bool disable_web_page_preview,
-    bool disable_notification, int reply_to_message_id, const char *reply_markup);
+telebot_error_e telebot_core_send_message(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *text, const char *parse_mode,
+        bool disable_web_page_preview, bool disable_notification, int reply_to_message_id,
+        const char *reply_markup, telebot_core_response_t *response);
 
 /**
  * @brief Forward messages of any kind.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] from_chat_id Unique identifier for the chat where the original
@@ -231,15 +212,17 @@ telebot_error_e telebot_send_message(telebot_handler_t handle, long long int cha
  * @param[in] disable_notification Sends the message silently. Users will receive a
  * notification with no sound.
  * @param[in] message_id Unique message identifier.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_forward_message(telebot_handler_t handle, long long int chat_id,
-    long long int from_chat_id, bool disable_notification, int message_id);
+telebot_error_e telebot_core_forward_message(telebot_core_handler_t *core_h,
+        long long int chat_id, long long int from_chat_id, bool disable_notification,
+        int message_id, telebot_core_response_t *response);
 
 /**
  * @brief Send photos.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] photo Photo to send. It is either file_id as String to resend a photo
@@ -254,13 +237,14 @@ telebot_error_e telebot_forward_message(telebot_handler_t handle, long long int 
  * @param[in] reply_markup Additional interface options. An object for a custom
  * reply keyboard, instructions to hide keyboard or to force a reply from
  * the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_photo(telebot_handler_t handle, long long int chat_id,
-    const char *photo, bool is_file, const char *caption, const char *parse_mode,
-    bool disable_notification, int reply_to_message_id, const char *reply_markup);
-
+telebot_error_e telebot_core_send_photo(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *photo, bool is_file, const char *caption,
+        const char *parse_mode, bool disable_notification, int reply_to_message_id,
+        const char *reply_markup, telebot_core_response_t *response);
 
 /**
  * @brief Send audio files. if you want Telegram clients to display them in the
@@ -269,8 +253,8 @@ telebot_error_e telebot_send_photo(telebot_handler_t handle, long long int chat_
  * title and performer are both empty and the mime-type of the file to be sent is
  * not audio/mpeg, the file will be sent as a playable voice message. For this to
  * work, the audio must be in an .ogg file encoded with OPUS. For sending voice
- * messages, use the telegram_send_voice() function instead.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * messages, use the telegram_core_send_voice() function instead.
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] audio Audio file to send. It is either a file_id as String to resend an
@@ -291,17 +275,19 @@ telebot_error_e telebot_send_photo(telebot_handler_t handle, long long int chat_
  * @param[in] reply_to_message_id If the message is a reply, ID of the original message.
  * @param[in] reply_markup Additional interface options. An object for a custom reply
  * keyboard, instructions to hide keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_audio(telebot_handler_t handle, long long int chat_id,
-    const char *audio, bool is_file, const char *caption, const char *parse_mode,
-    int duration, const char *performer, const char *title, const char *thumb,
-    bool disable_notification, int reply_to_message_id, const char *reply_markup);
+telebot_error_e telebot_core_send_audio(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *audio, bool is_file, const char *caption,
+        const char *parse_mode, int duration, const char *performer, const char *title,
+        const char *thumb, bool disable_notification, int reply_to_message_id,
+        const char *reply_markup, telebot_core_response_t *response);
 
 /**
  * @brief Send general files.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] document Document file to send. It is either a file_id as String to
@@ -319,18 +305,20 @@ telebot_error_e telebot_send_audio(telebot_handler_t handle, long long int chat_
  * @param[in] reply_to_message_id If the message is a reply, ID of the original message.
  * @param[in] reply_markup Additional interface options. An object for a custom reply
  * keyboard, instructions to hide keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_document(telebot_handler_t handle, long long int chat_id,
-    const char *document, bool is_file, const char *thumb, const char *caption,
-    const char *parse_mode, bool disable_notification, int reply_to_message_id,
-    const char *reply_markup);
+telebot_error_e telebot_core_send_document(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *document, bool is_file, const char *thumb,
+        const char *caption, const char *parse_mode, bool disable_notification,
+        int reply_to_message_id, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Send video files, Telegram clients support mp4 videos (other formats
  * may be sent as Document).
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] video Video file to send. It is either a file_id as String to resend
@@ -352,18 +340,20 @@ telebot_error_e telebot_send_document(telebot_handler_t handle, long long int ch
  * @param[in] reply_to_message_id If the message is a reply, ID of the original message.
  * @param[in] reply_markup Additional interface options. An object for a custom reply
  * keyboard, instructions to hide keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_video(telebot_handler_t handle, long long int chat_id,
-    const char *video, bool is_file, int duration, int width, int height,
-    const char *thumb, const char *caption, const char *parse_mode,
-    bool supports_streaming, bool disable_notification, int reply_to_message_id,
-    const char *reply_markup);
+telebot_error_e telebot_core_send_video(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *video, bool is_file, int duration,
+        int width, int height, const char *thumb, const char *caption,
+        const char *parse_mode, bool supports_streaming, bool disable_notification,
+        int reply_to_message_id, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Send animation files (GIF or H.264/MPEG-4 AVC without sound).
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] animation Animation file to send. It is either a file_id to resend
@@ -383,20 +373,21 @@ telebot_error_e telebot_send_video(telebot_handler_t handle, long long int chat_
  * @param[in] reply_to_message_id If the message is a reply, ID of the original message.
  * @param[in] reply_markup Additional interface options. An object for a custom reply
  * keyboard, instructions to hide keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_animation(telebot_handler_t handle, long long int chat_id,
-    const char *animation, bool is_file, int duration, int width, int height,
-    const char *thumb, const char *caption, const char *parse_mode,
-    bool disable_notification, int reply_to_message_id, const char *reply_markup);
-
+telebot_error_e telebot_core_send_animation(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *animation, bool is_file, int duration,
+        int width, int height, const char *thumb, const char *caption,
+        const char *parse_mode, bool disable_notification, int reply_to_message_id,
+        const char *reply_markup, telebot_core_response_t *response);
 
 /**
  * @brief Send audio files, if you want Telegram clients to display the file as
  * a playable voice message. For this to work, your audio must be in an .ogg file
  * encoded with OPUS (other formats may be sent as Audio or Document).
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] voice Audio file to send. It is either a file_id as String to resend
@@ -410,18 +401,20 @@ telebot_error_e telebot_send_animation(telebot_handler_t handle, long long int c
  * @param[in] reply_to_message_id If the message is a reply, ID of the original message.
  * @param[in] reply_markup Additional interface options. An object for a custom reply
  * keyboard, instructions to hide keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_voice(telebot_handler_t handle, long long int chat_id,
-    const char *voice, bool is_file, const char *caption, const char *parse_mode,
-    int duration, bool disable_notification, int reply_to_message_id,
-    const char *reply_markup);
+telebot_error_e telebot_core_send_voice(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *voice, bool is_file, const char *caption,
+        const char *parse_mode, int duration, bool disable_notification,
+        int reply_to_message_id, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Send video messages. As of v.4.0, Telegram clients support rounded square
  * mp4 videos of up to 1 minute long.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] video_not Video note to send. It is either a file_id to resend
@@ -439,16 +432,17 @@ telebot_error_e telebot_send_voice(telebot_handler_t handle, long long int chat_
  * @param[in] reply_markup Additional interface options. An object for a custom reply
  * keyboard, instructions to hide keyboard or to force a reply from the user.
  * @param[out] response Response data that contains the sent message on success.
- * It MUST be freed with #telebot_put_response().
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_video_note(telebot_handler_t handle, long long int chat_id,
-    char *video_note, bool is_file, int duration, int length, const char *thumb,
-    bool disable_notification, int reply_to_message_id, const char *reply_markup);
+telebot_error_e telebot_core_send_video_note(telebot_core_handler_t *core_h,
+        long long int chat_id, char *video_note, bool is_file, int duration, int length,
+        const char *thumb, bool disable_notification, int reply_to_message_id,
+        const char *reply_markup, telebot_core_response_t *response);
 
 /**
  * @brief Send point on the map.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] latitude Latitude of location.
@@ -460,18 +454,20 @@ telebot_error_e telebot_send_video_note(telebot_handler_t handle, long long int 
  * @param[in] reply_to_message_id If the message is a reply, ID of the original message.
  * @param[in] reply_markup Additional interface options. An object for a custom reply
  * keyboard, instructions to hide keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_location(telebot_handler_t handle, long long int chat_id,
-    float latitude, float longitude, int live_period, bool disable_notification,
-    int reply_to_message_id, const char *reply_markup);
+telebot_error_e telebot_core_send_location(telebot_core_handler_t *core_h,
+        long long int chat_id, float latitude, float longitude, int live_period,
+        bool disable_notification, int reply_to_message_id, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Edit live location messages sent by the bot or via the bot (for inline
  * bots). A location can be edited until its live_period expires or editing is
- * explicitly disabled by a call to #telebot_stop_message_live_location().
- * @param[in] handle The telebot handler created with #telebot_create().
+ * explicitly disabled by a call to #telebot_core_stop_message_live_location().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] message_id Required if inline_message_id is not specified.
@@ -481,17 +477,19 @@ telebot_error_e telebot_send_location(telebot_handler_t handle, long long int ch
  * @param[in] latitude Latitude of location.
  * @param[in] longitude Longitude of location.
  * @param[in] reply_markup A JSON-serialized object for a new inline keyboard.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * Otherwise, True is returned. It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_edit_message_live_location(telebot_handler_t handle,
-    long long int chat_id, int message_id, const char *inline_message_id,
-    float latitude, float longitude, const char *reply_markup);
+telebot_error_e telebot_core_edit_message_live_location(telebot_core_handler_t *core_h,
+        long long int chat_id, int message_id, const char *inline_message_id,
+        float latitude, float longitude, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Stop updating a live location message sent by the bot or via the bot
  * (for inline bots) before live_period expires.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] message_id Required if inline_message_id is not specified.
@@ -499,16 +497,17 @@ telebot_error_e telebot_edit_message_live_location(telebot_handler_t handle,
  * @param[in] inline_message_id Required if chat_id and message_id are not
  * specified. Identifier of the inline message.
  * @param[in] reply_markup A JSON-serialized object for a new inline keyboard.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * Otherwise, True is returned. It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_stop_message_live_location(telebot_handler_t handle,
-    long long int chat_id, int message_id, char *inline_message_id,
-    const char *reply_markup);
+telebot_error_e telebot_core_stop_message_live_location(telebot_core_handler_t *core_h,
+        long long int chat_id, int message_id, char *inline_message_id,
+        const char *reply_markup, telebot_core_response_t *response);
 
 /**
  * @brief Send information about a venue.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] latitude Latitude of venue.
@@ -523,17 +522,19 @@ telebot_error_e telebot_stop_message_live_location(telebot_handler_t handle,
  * @param[in] reply_markup Additional interface options. A JSON-serialized
  * object for an inline keyboard, custom reply keyboard, instructions to remove
  * reply keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_venue(telebot_handler_t handle, long long int chat_id,
-    float latitude, float longitude, const char *title, const char *address,
-    const char *foursquare_id, const char *foursquare_type, bool disable_notification,
-    int reply_to_message_id, const char *reply_markup);
+telebot_error_e telebot_core_send_venue(telebot_core_handler_t *core_h,
+        long long int chat_id, float latitude, float longitude, const char *title,
+        const char *address, const char *foursquare_id, const char *foursquare_type,
+        bool disable_notification, int reply_to_message_id, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Send phone contacts.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] phone_number Contact's phone numbers.
@@ -546,22 +547,24 @@ telebot_error_e telebot_send_venue(telebot_handler_t handle, long long int chat_
  * @param[in] reply_markup Additional interface options. A JSON-serialized
  * object for an inline keyboard, custom reply keyboard, instructions to remove
  * reply keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_contact(telebot_handler_t handle, long long int chat_id,
-    const char *phone_number, const char *first_name, const char *last_name,
-    const char *vcard, bool disable_notification, int reply_to_message_id,
-    const char *reply_markup);
+telebot_error_e telebot_core_send_contact(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *phone_number, const char *first_name,
+        const char *last_name, const char *vcard, bool disable_notification,
+        int reply_to_message_id, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Send a native poll.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] question Poll question, 1-255 characters.
- * @param[in] options A aray of answer options, 2-10 strings 1-100 characters each.
- * @param[in] count_options Number of answer options.
+ * @param[in] options A JSON-serialized list of answer options, 2-10 strings 1-100
+ * characters each.
  * @param[in] is_anonymous True, if the poll needs to be anonymous, defaults to True.
  * @param[in] type Poll type, “quiz” or “regular”, defaults to “regular”.
  * @param[in] allows_multiple_answers True, if the poll allows multiple answers,
@@ -576,17 +579,20 @@ telebot_error_e telebot_send_contact(telebot_handler_t handle, long long int cha
  * @param[in] reply_markup Additional interface options. A JSON-serialized
  * object for an inline keyboard, custom reply keyboard, instructions to remove
  * reply keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_poll(telebot_handler_t handle, long long int chat_id,
-    const char *question, const char **options, int count_options, bool is_anonymous,
-    const char *type, bool allows_multiple_answers, int correct_option_id, bool is_closed,
-    bool disable_notification, int reply_to_message_id, const char *reply_markup);
+telebot_error_e telebot_core_send_poll(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *question, const char *options,
+        bool is_anonymous, const char *type, bool allows_multiple_answers,
+        int correct_option_id, bool is_closed, bool disable_notification,
+        int reply_to_message_id, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Send a dice, which will have a random value from 1 to 6.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername)
  * @param[in] disable_notification Sends the message silently. Users will receive
@@ -595,22 +601,25 @@ telebot_error_e telebot_send_poll(telebot_handler_t handle, long long int chat_i
  * @param[in] reply_markup Additional interface options. A JSON-serialized
  * object for an inline keyboard, custom reply keyboard, instructions to remove
  * reply keyboard or to force a reply from the user.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the sent message on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_dice(telebot_handler_t handle, long long int chat_id,
-    bool disable_notification, int reply_to_message_id, const char *reply_markup);
+telebot_error_e telebot_core_send_dice(telebot_core_handler_t *core_h,
+        long long int chat_id, bool disable_notification,
+        int reply_to_message_id, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Tell the user that something is happening on the bot's side. The status
  * is set for 5 seconds or less (when a message arrives from your bot, Telegram
  * clients clear its typing status). Example: The ImageBot needs some time to process
  * a request and upload the image. Instead of sending a text message along the lines
- * of "Retrieving image, please wait…", the bot may use #telebot_send_chat_action()
+ * of "Retrieving image, please wait…", the bot may use #telebot_core_send_chat_action()
  * with action = upload_photo. The user will see a "sending photo" status for the bot.
  * It is only recommended to use when a response from the bot will take a noticeable
  * amount of time to arrive.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername)
  * @param[in] action Type of action to broadcast. Choose one, depending on what the
@@ -618,48 +627,53 @@ telebot_error_e telebot_send_dice(telebot_handler_t handle, long long int chat_i
  * record_video or upload_video for videos, record_audio or upload_audio for
  * audio files, upload_document for general files, find_location for location
  * data.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_send_chat_action(telebot_handler_t handle, long long int chat_id,
-    char *action);
+telebot_error_e telebot_core_send_chat_action(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *action, telebot_core_response_t *response);
 
 /**
- * @brief This function is used to get user profile pictures object
- *
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @brief Get user profile pictures object
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] user_id Unique identifier of the target user.
- * @param[in] offset Sequential number of the first photo to be returned.
- * By default, up to 10 photos are returned.
- * @param[in] limit Limits the number of photos to be retrieved.
- * Values between 1-100 are accepted. Defaults to 100.
- * @param[out] photos A pointer to user profile photo object. It MUST be
- * released  with #telebot_put_user_profile_photos after use.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[in] offset Sequential number of the first photo to be returned. By default,
+ * all photos are returned.
+ * @param[in] limit Limits the number of photos to be retrieved. Values between
+ * 1—100 are accepted. Defaults to 100.
+ * @param[out] response Response data that contains user's profile photos on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_get_user_profile_photos(telebot_handler_t handle,
-        int user_id, int offset, int limit, telebot_user_profile_photos_t *photos);
+telebot_error_e telebot_core_get_user_profile_photos(telebot_core_handler_t *core_h,
+        int user_id, int offset, int limit, telebot_core_response_t *response);
 
 /**
- * @brief This function is used to free memory allocated for user profile
- * pictures object
- * @param[in] photos A pointer to user profile photo object, obtained with
- * #telebot_get_user_profile_photos.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
- */
-telebot_error_e telebot_put_user_profile_photos(telebot_user_profile_photos_t *photos);
-
-/**
- * @brief This function is used to download file.
+ * @brief Get basic info about a file and prepare it for
+ * downloading. For the moment, bots can download files of up to 20MB in size.
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] file_id File identifier to get info about.
- * @param[in] path A path where the file is downloaded
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains file object on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_download_file(telebot_handler_t handle, const char *file_id,
-    const char *path);
+telebot_error_e telebot_core_get_file(telebot_core_handler_t *core_h, const char *file_id,
+        telebot_core_response_t *response);
+
+/**
+ * @brief Download file using file_path obtained with
+ * telebot_core_get_file(). It is guaranteed that the link will be valid for
+ * at least 1 hour. When the link expires, a new one can be requested by
+ * calling telebot_core_get_file() again.
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
+ * @param[in] file_path A file path take from the response of telebot_core_get_file()
+ * @param[in] out_file Full path to download and save file.
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative
+ * error value. No response, i.e., core_h->resp_data contains nothing.
+ */
+telebot_error_e telebot_core_download_file(telebot_core_handler_t *core_h,
+        const char *file_path, const char *out_file);
 
 /**
  * @brief Kick a user from a group, a supergroup or a channel. In the case of
@@ -667,38 +681,41 @@ telebot_error_e telebot_download_file(telebot_handler_t handle, const char *file
  * their own using invite links, etc., unless unbanned first. The bot must be an
  * administrator in the chat for this to work and must have the appropriate admin
  * rights.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername)
  * @param[in] user_id Unique identifier of the target user
  * @param[in] until_date Date when the user will be unbanned, unix time. If user is
  * banned for more than 366 days or less than 30 seconds from the current time
  * they are considered to be banned forever.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_kick_chat_member(telebot_handler_t handle, long long int chat_id,
-    int user_id, long until_date);
+telebot_error_e telebot_core_kick_chat_member(telebot_core_handler_t *core_h,
+        long long int chat_id, int user_id, long until_date,
+        telebot_core_response_t *response);
 
 /**
  * @brief Unban a previously kicked user in a supergroup or channel. The user will
  * not return to the group or channel automatically, but will be able to join via
  * link, etc. The bot must be an administrator for this to work.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername)
  * @param[in] user_id Unique identifier of the target user
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_unban_chat_member(telebot_handler_t handle, long long int chat_id,
-     int user_id);
+telebot_error_e telebot_core_unban_chat_member(telebot_core_handler_t *core_h,
+        long long int chat_id, int user_id, telebot_core_response_t *response);
 
 /**
  * @brief Restrict a user in a supergroup. The bot must be an administrator in
  * the supergroup for this to work and must have the appropriate admin rights.
  * Pass true for all boolean parameters to lift restrictions from a user.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername)
  * @param[in] user_id Unique identifier of the target user.
@@ -722,20 +739,21 @@ telebot_error_e telebot_unban_chat_member(telebot_handler_t handle, long long in
  * new users to the chat.
  * @param[in] can_pin_messages Pass true, if the user is allowed to pin messages.
  * Ignored in public supergroups
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_restrict_chat_member(telebot_handler_t handle,
-    long long int chat_id, int user_id, long until_date, bool can_send_messages,
-    bool can_send_media_messages, bool can_send_polls, bool can_send_other_messages,
-    bool can_add_web_page_previews, bool can_change_info, bool can_invite_users,
-    bool can_pin_messages);
+telebot_error_e telebot_core_restrict_chat_member(telebot_core_handler_t *core_h,
+        long long int chat_id, int user_id, long until_date, bool can_send_messages,
+        bool can_send_media_messages, bool can_send_polls, bool can_send_other_messages,
+        bool can_add_web_page_previews, bool can_change_info, bool can_invite_users,
+        bool can_pin_messages, telebot_core_response_t *response);
 
 /**
  * @brief Promote or demote a user in a supergroup or a channel. The bot must be
  * an administrator in the chat for this to work and must have the appropriate
  * admin rights. Pass False for all boolean parameters to demote a user.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] user_id Unique identifier of the target user.
@@ -757,35 +775,39 @@ telebot_error_e telebot_restrict_chat_member(telebot_handler_t handle,
  * administrators with a subset of his own privileges or demote administrators
  * that he has promoted, directly or indirectly (promoted by administrators
  * that were appointed by him).
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_promote_chat_member(telebot_handler_t handle,
-    long long int chat_id, int user_id, bool can_change_info, bool can_post_messages,
-    bool can_edit_messages, bool can_delete_messages, bool can_invite_users,
-    bool can_restrict_members, bool can_pin_messages, bool can_promote_members);
+telebot_error_e telebot_core_promote_chat_member(telebot_core_handler_t *core_h,
+        long long int chat_id, int user_id, bool can_change_info, bool can_post_messages,
+        bool can_edit_messages, bool can_delete_messages, bool can_invite_users,
+        bool can_restrict_members, bool can_pin_messages, bool can_promote_members,
+        telebot_core_response_t *response);
 
 /**
  * @brief Export an invite link to a supergroup or a channel. The bot must be
  * an administrator in the chat for this to work and must have the appropriate
  * admin rights.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] user_id Unique identifier of the target user.
  * @param[in] custom_title New custom title for the administrator; 0-16 characters,
  * emoji are not allowed.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_set_chat_admin_custom_title(telebot_handler_t handle,
-    long long int chat_id, int user_id, const char *custom_title);
+telebot_error_e telebot_core_set_chat_admin_custom_title(telebot_core_handler_t *core_h,
+        long long int chat_id, int user_id, const char *custom_title,
+        telebot_core_response_t *response);
 
 /**
  * @brief Set default chat permissions for all members. The bot must be an administrator
  * in the group or a supergroup for this to work and must have the 'can_restrict_members'
  * admin rights.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername)
  * @param[in] can_send_messages Pass true, if the user is allowed to send text
@@ -805,238 +827,226 @@ telebot_error_e telebot_set_chat_admin_custom_title(telebot_handler_t handle,
  * new users to the chat.
  * @param[in] can_pin_messages Pass true, if the user is allowed to pin messages.
  * Ignored in public supergroups
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_set_chat_permissions(telebot_handler_t handle,
-    long long int chat_id, bool can_send_messages, bool can_send_media_messages,
-    bool can_send_polls, bool can_send_other_messages, bool can_add_web_page_previews,
-    bool can_change_info, bool can_invite_users, bool can_pin_messages);
+telebot_error_e telebot_core_set_chat_permissions(telebot_core_handler_t *core_h,
+        long long int chat_id, bool can_send_messages, bool can_send_media_messages,
+        bool can_send_polls, bool can_send_other_messages, bool can_add_web_page_previews,
+        bool can_change_info, bool can_invite_users, bool can_pin_messages,
+        telebot_core_response_t *response);
 
 /**
  * @brief Generate a new invite link for a chat; any previously generated link is
  * revoked. The bot must be an administrator in the chat for this to work and must
  * have the appropriate admin rights.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
- * @param[out] invite_link Exported invite link, must be freed after use.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the new invite link on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_export_chat_invite_link(telebot_handler_t handle,
-    long long int chat_id, char **invite_link);
+telebot_error_e telebot_core_export_chat_invite_link(telebot_core_handler_t *core_h,
+        long long int chat_id, telebot_core_response_t *response);
 
 /**
  * @brief Set a new profile photo for the chat. Photos can't be changed for private
  * chats. The bot must be an administrator in the chat for this to work and must
  * have the appropriate admin rights.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] photo New chat photo file path.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_set_chat_photo(telebot_handler_t handle, long long int chat_id,
-    const char *photo);
+telebot_error_e telebot_core_set_chat_photo(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *photo, telebot_core_response_t *response);
 
 /**
  * @brief Delete a chat photo. Photos can't be changed for private chats. The bot
  * must be an administrator in the chat for this to work and must have the
  * appropriate admin rights.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_delete_chat_photo(telebot_handler_t handle, long long int chat_id);
+telebot_error_e telebot_core_delete_chat_photo(telebot_core_handler_t *core_h,
+        long long int chat_id, telebot_core_response_t *response);
 
 /**
  * @brief Change the title of a chat. Titles can't be
  * changed for private chats. The bot must be an administrator in the chat for
  * this to work and must have the appropriate admin rights.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] title New chat title, 1-255 characters.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_set_chat_title(telebot_handler_t handle, long long int chat_id,
-    const char *title);
+telebot_error_e telebot_core_set_chat_title(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *title, telebot_core_response_t *response);
 
 /**
  * @brief Change the description of a supergroup or a channel. The bot must be
  * an administrator in the chat for this to work and must have the appropriate
  * admin rights.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] description New chat description, 0-255 characters.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_set_chat_description(telebot_handler_t handle,
-    long long int chat_id, const char *description);
+telebot_error_e telebot_core_set_chat_description(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *description,
+        telebot_core_response_t *response);
 
 /**
  * @brief Pin a message in a supergroup or a channel. The bot must be an administrator
  * in the chat for this to work and must have the 'can_pin_messages' admin right
  * in the supergroup or 'can_edit_messages' admin right in the channel.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] message_id Identifier of a message to pin.
  * @param[in] disable_notification  Pass True, if it is not necessary to send
  * a notification to all chat members about the new pinned message.
  * Notifications are always disabled in channels.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_pin_chat_message(telebot_handler_t handle, long long int chat_id,
-    int message_id, bool disable_notification);
+telebot_error_e telebot_core_pin_chat_message(telebot_core_handler_t *core_h,
+        long long int chat_id, int message_id, bool disable_notification,
+        telebot_core_response_t *response);
 
 /**
  * @brief Unpin a message in a supergroup or a channel. The bot must be an administrator
  * in the chat for this to work and must have the 'can_pin_messages' admin right
  * in the supergroup or 'can_edit_messages' admin right in the channel.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_unpin_chat_message(telebot_handler_t handle, long long int chat_id);
+telebot_error_e telebot_core_unpin_chat_message(telebot_core_handler_t *core_h,
+        long long int chat_id, telebot_core_response_t *response);
 
 /**
  * @brief Leave a group, supergroup or channel.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_leave_chat(telebot_handler_t handle, long long int chat_id);
+telebot_error_e telebot_core_leave_chat(telebot_core_handler_t *core_h,
+        long long int chat_id, telebot_core_response_t *response);
 
 /**
  * @brief Get up to date information about the chat (current name of the user for
  * one-on-one conversations, current username of a user, group or channel, etc).
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
- * @param[out] chat Pointer to chat, must be released with #telebot_put_chat().
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains a Chat object on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_get_chat(telebot_handler_t handle, long long int chat_id,
-    telebot_chat_t *chat);
-
-
-/**
- * @brief Release chat obtained with #telebot_get_chat().
- * @param[in] chat Pointer to chat
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
- */
-telebot_error_e  telebot_put_chat(telebot_chat_t *chat);
+telebot_error_e telebot_core_get_chat(telebot_core_handler_t *core_h,
+        long long int chat_id, telebot_core_response_t *response);
 
 /**
  * @brief Get a list of administrators in a chat. Response contains an array of
  * objects that contains information about all chat administrators except other
  * bots. If the chat is a group or a supergroup and no administrators were
  * appointed, only the creator will be returned.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
- * @param[out] admin Pointer to chat administrators, must be released
- * with #telebot_put_chat_admins().
- * @param[out] count Pointer to get a number of administrators.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains a array of chat members on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_get_chat_admins(telebot_handler_t handle, long long int chat_id,
-    telebot_chat_member_t **admin, int *count);
-
-/**
- * @brief Release chat admins obtained with #telebot_get_chat_admins().
- * @param[in] chat Pointer to chat administrators to be released.
- * @param[in] count Number of chat administrators.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
- */
-telebot_error_e telebot_put_chat_admins(telebot_chat_member_t *admins, int count);
+telebot_error_e telebot_core_get_chat_admins(telebot_core_handler_t *core_h,
+        long long int chat_id, telebot_core_response_t *response);
 
 /**
  * @brief Get the number of members in a chat.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
- * @param[out] count Number of chat members.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains number of chat members on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_get_chat_members_count(telebot_handler_t handle,
-    long long int chat_id, int *count);
+telebot_error_e telebot_core_get_chat_members_count(telebot_core_handler_t *core_h,
+        long long int chat_id, telebot_core_response_t *response);
 
 /**
  * @brief Get information about a member of a chat.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] user_id Unique identifier of the target user.
- * @param[out] member Pointer to chat member to obtain, must be released
- * with #telebot_put_chat_member().
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains a chat member on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_get_chat_member(telebot_handler_t handle, long long int chat_id,
-    int user_id, telebot_chat_member_t *member);
-
-/**
- * @brief Release chat member otained with #telebot_get_chat_member().
- * @param[in] member Pointer to chat member to be released.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
- */
-telebot_error_e telebot_put_chat_member(telebot_chat_member_t *member);
+telebot_error_e telebot_core_get_chat_member(telebot_core_handler_t *core_h,
+        long long int chat_id, int user_id, telebot_core_response_t *response);
 
 /**
  * @brief Set a new group sticker set for a supergroup. The bot must be an administrator
  * in the chat for this to work and must have the appropriate admin rights. Use the field
- * can_set_sticker_set optionally returned in #telebot_get_chat requests to check
+ * can_set_sticker_set optionally returned in #telebot_core_get_chat requests to check
  * if the bot can use it.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
  * @param[in] sticker_set_name Name of the sticker set to be set as the group
  * sticker set.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_set_chat_sticker_set(telebot_handler_t handle,
-        long long int chat_id, const char *sticker_set_name);
+telebot_error_e telebot_core_set_chat_sticker_set(telebot_core_handler_t *core_h,
+        long long int chat_id, const char *sticker_set_name,
+        telebot_core_response_t *response);
 
 /**
  * @brief Delete a group sticker set from a supergroup. The bot must be an administrator
  * in the chat for this to work and must have the appropriate admin rights. Use the
- * field can_set_sticker_set optionally returned in #telebot_get_chat requests
+ * field can_set_sticker_set optionally returned in #telebot_core_get_chat requests
  * to check if the bot can use this method.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target channel (in the format \@channelusername).
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_delete_chat_sticker_set(telebot_handler_t handle,
-    long long int chat_id);
+telebot_error_e telebot_core_delete_chat_sticker_set(telebot_core_handler_t *core_h,
+        long long int chat_id, telebot_core_response_t *response);
 
 /**
  * @brief Send answers to callback queries sent from inline keyboards.
  * The answer will be displayed to the user as a notification at the top of
  * the chat screen or as an alert.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] callback_query_id Unique identifier for the query to be answered.
  * @param[in] text Text of the notification. If not specified, nothing will be shown
  * to the user, 0-200 characters
@@ -1049,45 +1059,39 @@ telebot_error_e telebot_delete_chat_sticker_set(telebot_handler_t handle,
  * @param[in] cache_time The maximum amount of time in seconds that the result of
  * the callback query may be cached client-side. Telegram apps will support
  * caching starting in version 3.14.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_answer_callback_query(telebot_handler_t handle,
-    const char *callback_query_id, const char *text, bool show_alert,
-    const char *url, int cache_time);
+telebot_error_e telebot_core_answer_callback_query(telebot_core_handler_t *core_h,
+        const char *callback_query_id, const char *text, bool show_alert,
+        const char *url, int cache_time, telebot_core_response_t *response);
 
 /**
  * @brief Change the list of the bot's commands.
- * @param[in] handle The telebot handler created with #telebot_create().
- * @param[in] commands Array of telegram bot commands.
- * @param[in] count The number of commands in array.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
+ * @param[in] commands A JSON-serialized list of bot commands to be set as the
+ * list of the bot's commands. At most 100 commands can be specified.
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_set_my_commands(telebot_handler_t handle,
-    telebot_bot_command_t commands[], int count);
+telebot_error_e telebot_core_set_my_commands(telebot_core_handler_t *core_h,
+        const char *commands, telebot_core_response_t *response);
 
 /**
- * @brief Get the current list of the bot's commands.
- * @param[in] handle The telebot handler created with #telebot_create().
- * @param[out] commands Pointer to commands to be obtained, which must be
- * released with #telebot_put_my_commands().
- * @param[out] count Pointer to place the number of commands.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
+ * @brief Get the current list of the bot's commands..
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
+ * @param[out] response Response data that contains "True" on success.
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_get_my_commands(telebot_handler_t handle,
-    telebot_bot_command_t **commands, int *count);
-
-/**
- * @brief Release bot commands obtained with #telebot_get_my_commands().
- * @param[in] commands Pointer to commands to be released.
- * @param[in] count The number of commands to be released.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
- */
-telebot_error_e telebot_put_my_commands(telebot_bot_command_t *commands, int count);
+telebot_error_e telebot_core_get_my_commands(telebot_core_handler_t *core_h,
+        telebot_core_response_t *response);
 
 /**
  * @brief Edit text and game messages sent by the bot or via the bot (for inline bots).
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Required if inline_message_id. Unique identifier for the target
  * chat or username of the target channel (in the format \@channelusername).
  * @param[in] message_id Required if inline_message_id is not specified.
@@ -1099,17 +1103,18 @@ telebot_error_e telebot_put_my_commands(telebot_bot_command_t *commands, int cou
  * bold, italic, fixed-width text or inline URLs in your bot's message.
  * @param[in] disable_web_page_priview Disables link previews for links in this message.
  * @param[in] reply_markup A JSON-serialized object for an inline keyboard.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the message sent on succes,
+ * otherwise "True". It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_edit_message_text(telebot_handler_t handle,
-    long long int chat_id, int message_id, const char *inline_message_id,
-    const char *text, const char *parse_mode, bool disable_web_page_preview,
-    const char *reply_markup);
+telebot_error_e telebot_core_edit_message_text(telebot_core_handler_t *core_h,
+        long long int chat_id, int message_id, const char *inline_message_id,
+        const char *text, const char *parse_mode, bool disable_web_page_preview,
+        const char *reply_markup, telebot_core_response_t *response);
 
 /**
  * @brief Edit captions of messages sent by the bot or via the bot (for inline bots).
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Required if inline_message_id. Unique identifier for the target
  * chat or username of the target channel (in the format \@channelusername).
  * @param[in] message_id Required if inline_message_id is not specified.
@@ -1118,17 +1123,19 @@ telebot_error_e telebot_edit_message_text(telebot_handler_t handle,
  * specified. Identifier of the inline message.
  * @param[in] caption New caption of the message.
  * @param[in] reply_markup A JSON-serialized object for an inline keyboard.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the message sent on succes,
+ * otherwise "True". It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_edit_message_caption(telebot_handler_t handle,
-    long long int chat_id, int message_id, const char *inline_message_id,
-    const char *caption, const char *parse_mode, const char *reply_markup);
+telebot_error_e telebot_core_edit_message_caption(telebot_core_handler_t *core_h,
+        long long int chat_id, int message_id, const char *inline_message_id,
+        const char *caption, const char *parse_mode, const char *reply_markup,
+        telebot_core_response_t *response);
 
 /**
  * @brief Edit only the reply markup of messages sent by the bot or via the
  * bot (for inline bots).
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Required if inline_message_id. Unique identifier for the target
  * chat or username of the target channel (in the format \@channelusername).
  * @param[in] message_id Required if inline_message_id is not specified.
@@ -1136,17 +1143,18 @@ telebot_error_e telebot_edit_message_caption(telebot_handler_t handle,
  * @param[in] inline_message_id Required if chat_id and message_id are not
  * specified. Identifier of the inline message.
  * @param[in] reply_markup A JSON-serialized object for an inline keyboard.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the message sent on succes,
+ * otherwise "True". It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
 
-telebot_error_e telebot_edit_message_reply_markup(telebot_handler_t handle,
-    long long int chat_id, int message_id, const char *inline_message_id,
-    const char *reply_markup);
+telebot_error_e telebot_core_edit_message_reply_markup(telebot_core_handler_t *core_h,
+        long long int chat_id, int message_id, const char *inline_message_id,
+        const char *reply_markup, telebot_core_response_t *response);
 
 /**
  * @brief Stop a poll which was sent by the bot.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Required if inline_message_id. Unique identifier for the target
  * chat or username of the target channel (in the format \@channelusername).
  * @param[in] message_id Required if inline_message_id is not specified.
@@ -1154,12 +1162,15 @@ telebot_error_e telebot_edit_message_reply_markup(telebot_handler_t handle,
  * @param[in] inline_message_id Required if chat_id and message_id are not
  * specified. Identifier of the inline message.
  * @param[in] reply_markup A JSON-serialized object for an inline keyboard.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains the message sent on succes,
+ * otherwise "True". It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
 
-telebot_error_e telebot_stop_poll(telebot_handler_t handle, long long int chat_id,
-    int message_id, const char *reply_markup);
+telebot_error_e telebot_core_stop_poll(telebot_core_handler_t *core_h,
+        long long int chat_id, int message_id, const char *reply_markup,
+        telebot_core_response_t *response);
+
 
 /**
  * @brief Delete a message, including service messages, with the following
@@ -1171,14 +1182,22 @@ telebot_error_e telebot_stop_poll(telebot_handler_t handle, long long int chat_i
  *  - If the bot is an administrator of a group, it can delete any message there.
  *  - If the bot has can_delete_messages permission in a supergroup or a channel,
  *    it can delete any message there.
- * @param[in] handle The telebot handler created with #telebot_create().
+ * @param[in] core_h The telebot core handler created with #telebot_core_create().
  * @param[in] chat_id Unique identifier for the target chat or username of the
  * target message_id Message identifier to be deleted.
- * @return on Success, #TELEBOT_ERROR_NONE is returned, otherwise a negative
- * error value.
+ * @param[out] response Response data that contains "True" on succes,
+ * It MUST be freed with #telebot_core_put_response().
+ * @return on Success, TELEBOT_ERROR_NONE is returned, otherwise a negative error value.
  */
-telebot_error_e telebot_delete_message(telebot_handler_t handle, long long int chat_id,
-    int message_id);
+telebot_error_e telebot_core_delete_message(telebot_core_handler_t *core_h,
+        long long int chat_id, int message_id, telebot_core_response_t *response);
+
+
+/**
+ * @brief Release response data obtained with telebot core methods.
+ * @param[in] response Pointer to response to release.
+ */
+void telebot_core_put_response(telebot_core_response_t *response);
 
 /**
  * @} // end of APIs
@@ -1188,4 +1207,4 @@ telebot_error_e telebot_delete_message(telebot_handler_t handle, long long int c
 }
 #endif
 
-#endif /* __TELEBOT_METHODS_H__ */
+#endif /* __TELEBOT_CORE_API_H__ */

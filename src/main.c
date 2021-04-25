@@ -70,9 +70,6 @@ int main(int argc, char **argv) {
 	std_settings->scrollSpeed = 1;
 	std_settings->colsBetweenLetters = 1;
 	std_settings->rowOnUs = 2000;
-	//std_settings->string = malloc(4096);
-	//strcpy(std_settings->string, "$time");
-	//std_settings->stringsHead = NULL;
 	
 	//Variables that might later be changed
 	unsigned long counter = 0;
@@ -81,32 +78,9 @@ int main(int argc, char **argv) {
 
 	//String that is to be displayed
 	char *parsedString;
-	//char* string = malloc(4096);
-	//strcpy(string, "$time");
-	
-	//Test with linked list
-	//struct std_string *firstString = malloc(sizeof(struct std_string));
-	//struct std_string *secondString = malloc(sizeof(struct std_string));
-	//struct std_string *thirdString = malloc(sizeof(struct std_string));
-	////Set the text in the string
-	//strcpy(firstString->string, "Fanka nimfos");
-	//strcpy(secondString->string, "Lenker bankie konfie drinken");
-	//strcpy(thirdString->string, "Born to be Alive is gezongen door de Village People");
-	////Point the next thing of the struct to the correct new thing
-	//firstString->next = secondString;
-	//secondString->next = thirdString;
-	//thirdString->next = firstString;
-	//Create the current head string
-	//struct std_string *currString = NULL;
-	//struct std_string *head = malloc(sizeof(struct std_string));
-	
 	struct std_string *currentHead = NULL;
-	//printf("Adding strings to list\n");
-	//head = addStdString(head, "");
-
 	std_settings->stringsHead = NULL;
-	//addStdString(std_settings->stringsHead, "test");
-
+	
 	//Create the buffer that stores the bits (textBuffer[row][col])
 	bool** textBuffer = createBuffer();
 	//Create the telegram bot thread that checks for new messages
@@ -135,26 +109,12 @@ int main(int argc, char **argv) {
 		else {
 			//Get time
 			char* time = currentTime("%H:%M:%S");
-			//textToBuffer(*std_settings, textBuffer, time, 1);
 			//Show time
 			showText(*std_settings, textBuffer, time);
 			free(time);
 			//Set current head (not NULL when a message is received)
 			currentHead = std_settings->stringsHead;
 		}
-
-		/*
-		parsedString = parseMessage(std_settings->string);
-		//Scroll text if it is too long for the display
-		if (getStringCols(parsedString, std_settings->colsBetweenLetters) > COLS) {
-			scrollText(*std_settings, textBuffer);
-		}
-		//Show text on the middle of the screen if it is short
-		else {
-			showText(*std_settings, textBuffer, parsedString);
-		}
-		free(parsedString);
-		*/
 	}
 	//Clear contents in shift registers
 	clearBuffer(textBuffer);

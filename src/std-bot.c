@@ -35,6 +35,20 @@ struct std_string *addStdString(struct std_string *head, char *string, struct st
 	}
 }
 
+int nrOfQuotes(struct std_string *head) {
+	int count = 2;
+	struct std_string *currStr = head;
+	if (head == NULL) {
+		return 0;
+	}
+	while(currStr->next != head) {
+		count++;
+		currStr = currStr->next;
+	}
+	printf("There are %d quotes\n", count);
+	return count;
+}
+
 //Get telegram bot messages
 int getMessages(telebot_handler_t handle, int offset, struct std_settings* s) {
 	int count  = -1;
@@ -51,7 +65,8 @@ int getMessages(telebot_handler_t handle, int offset, struct std_settings* s) {
 		return -1;
 	}
 	//Create a return string
-	char returnString[4096];
+	int nrQuotes = nrOfQuotes(s->stringsHead);
+	char *returnString = malloc(256*nrQuotes+64);
 	//Print received messages
 	printf("New messages\n");
 	for (int index = 0; index < count; index++) {
@@ -116,6 +131,54 @@ int getMessages(telebot_handler_t handle, int offset, struct std_settings* s) {
 					long newRowOnTime = strtol(newRowOnTimeString, NULL, 10);
 					s->rowOnUs = newRowOnTime;
 					strcpy(returnString, "Time every row is on is changed.\n");
+				}
+				else if (strcmp(message.text, "/getquotes") == 0) {
+					printf("Getquotes received\n");
+
+					struct std_string* head = s->stringsHead;
+					struct std_string* curr = head;
+					int quotenr = 0;
+					char tempstring[256];
+					if (head == NULL) {
+						strcpy(returnString, "no quotes added yet");
+					}
+					else {
+						//Add all quotes to reply
+						strcpy(returnString, "ID: Quote:\n");
+						while (curr->next != head) {
+							sprintf(tempstring, "%d: %s\n", quotenr, curr->string);
+							strcat(returnString, tempstring);
+							curr = curr->next;	
+							quotenr++;
+						}
+						sprintf(tempstring, "%d: %s\n", quotenr, curr->string);
+						strcat(returnString, tempstring);
+					}
+				}
+				else if (strstr(message.text, "/deletequote")) {
+					printf("Deleting quote\n");
+					char *idString = strchr(message.text, ' ');
+					long id = strtol(idString, NULL, 10);
+					struct std_string* head = s->stringsHead;
+					struct std_string* curr = head;
+					if (head == NULL) {
+						strcpy(returnString, "no quotes added yet");
+					}
+					else {
+						if (id == 0) {
+							while (curr->next != head) {
+								curr = curr->next;
+							}
+						}
+						else {
+							for (int i = 0; i < id-1; i++) {
+								curr = curr->next;
+							}
+						}
+						free(curr->next);
+						curr->next = curr->next->next;
+						strcpy(returnString, "Quote removed");
+					}
 				}
 				else {
 					//Set new string
