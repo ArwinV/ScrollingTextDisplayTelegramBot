@@ -55,6 +55,30 @@ void *telebotThread(void *std_settings) {
 	return NULL;
 }
 
+//Read quotes from file
+void readQuotesFromFile(struct std_settings* s) {
+	FILE *fp;
+	struct std_string *head = NULL;
+	char * line = NULL;
+	size_t len = 0;
+	ssize_t read;
+	fp = fopen("quotes.txt", "r");
+	if (fp == NULL) {
+		return;
+	}
+	while ((read = getline(&line, &len, fp)) != -1) {
+		//Remove weird last character
+		line[strlen(line)-1] = 0;
+        	printf("Adding quote: %s", line);
+		addStdString(s->stringsHead, line, s);
+    	}
+
+	fclose(fp);
+	if (line) {
+	    free(line);
+	}
+}
+
 //Main function
 int main(int argc, char **argv) {
 	//Register interrupt handler
@@ -70,6 +94,7 @@ int main(int argc, char **argv) {
 	std_settings->scrollSpeed = 1;
 	std_settings->colsBetweenLetters = 1;
 	std_settings->rowOnUs = 2000;
+	std_settings->stringsHead = NULL;
 	
 	//Variables that might later be changed
 	unsigned long counter = 0;
@@ -77,9 +102,8 @@ int main(int argc, char **argv) {
 	int err;
 
 	//String that is to be displayed
-	char *parsedString;
-	struct std_string *currentHead = NULL;
-	std_settings->stringsHead = NULL;
+	readQuotesFromFile(std_settings);;
+	struct std_string *currentHead = std_settings->stringsHead;
 	
 	//Create the buffer that stores the bits (textBuffer[row][col])
 	bool** textBuffer = createBuffer();
