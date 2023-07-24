@@ -107,13 +107,14 @@ int main(int argc, char **argv) {
 	
 	//Create the buffer that stores the bits (textBuffer[row][col])
 	bool** textBuffer = createBuffer();
-	//Create the telegram bot thread that checks for new messages
-	err = pthread_create(&tid, NULL, telebotThread, (void *)std_settings);
+	//Create the telegram bot thread that checks for new messages QUOTES ARE DISABLED
+	//err = pthread_create(&tid, NULL, telebotThread, (void *)std_settings);
 	//Show the buffer
 	while (keepRunning) {
 		//Clear the buffer
 		clearBuffer(textBuffer);
-		if (currentHead != NULL) {
+		//NOTE! Quotes are disabled in the next line!
+		if (currentHead != NULL && 0) {
 			//Test new function that uses the string struct
 			stdStringToBuffer(*std_settings, textBuffer, currentHead, counter);	
 			//Show the buffer
@@ -132,7 +133,7 @@ int main(int argc, char **argv) {
 		}
 		else {
 			//Get time
-			char* time = currentTime("%H:%M:%S");
+			char* time = currentTime("%H:%M:%S  %d-%m");
 			//Show time
 			showText(*std_settings, textBuffer, time);
 			free(time);
