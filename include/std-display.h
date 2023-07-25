@@ -26,6 +26,7 @@ static int clk_pin = 6;
 
 struct std_string {
 	char string[256]; 
+	char from[64];
 	struct std_string *next;
 };
 
@@ -50,3 +51,4 @@ bool** textToBuffer(struct std_settings, bool**, char*, int);
 void showText(struct std_settings, bool**, char*);
 void scrollText(struct std_settings, bool**);
 bool** stdStringToBuffer(struct std_settings, bool**, struct std_string*, int);
+bool** singleStdStringToBuffer(struct std_settings, bool**, struct std_string*, int);

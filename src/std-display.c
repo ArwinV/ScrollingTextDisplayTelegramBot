@@ -287,3 +287,53 @@ bool **stdStringToBuffer(struct std_settings s, bool** buffer, struct std_string
 	}
 	return buffer;
 }
+
+//Generate one string from multiple std_strings
+bool **singleStdStringToBuffer(struct std_settings s, bool** buffer, struct std_string *string, int shift) {
+	int offset = 0;
+	int currentChar;
+	int charCol;
+	char stringWithTime[1024];
+	stringWithTime[0] = '\0';
+	//Add string if head is not NULL
+	if (string != NULL) {
+		strcat(stringWithTime, "                   ");	
+		strcat(stringWithTime, string->string);	
+		strcat(stringWithTime, " - ");	
+		strcat(stringWithTime, string->from);	
+		strcat(stringWithTime, "                   ");	
+	}
+	//Add time to string
+	//char* time = currentTime(" | %H:%M:%S | ");
+	//strcat(stringWithTime, time);
+	//free(time);
+	//Loop over all columns in the buffer
+	for (int col = shift; col < COLS+shift; col++) {
+		//Determine current character and column to be copied into the buffer
+		currentChar = col / (s.colsBetweenLetters + 5);
+		charCol = col % (s.colsBetweenLetters + 5);
+		//Copy all rows of the column if the column is not bigger than 5
+		if (charCol < 5) {
+			for (int row = 0; row < ROWS; row++) {
+				buffer[row][col-shift] = letters[stringWithTime[currentChar-offset]-32][row][charCol];
+			}
+		}
+		//If all columns of the string are copied, go to the next string
+		//if (stringWithTime[currentChar-offset+1] == 0 && charCol >= 4) {
+		//	if (string != NULL) {
+		//		//Next string
+		//		string = string->next;
+		//		//Add time
+		//		//stringWithTime[0] = '\0';
+		//		//strcat(stringWithTime, "          ");	
+		//		//char* time = currentTime(" | %H:%M:%S | ");
+		//		//strcat(stringWithTime, time);
+		//		//free(time);
+		//	}
+		//	//Set offset
+		//	offset += (currentChar-offset)+1;
+		//	col = col + s.colsBetweenLetters;
+		//}
+	}
+	return buffer;
+}

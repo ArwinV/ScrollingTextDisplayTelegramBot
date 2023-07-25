@@ -6,7 +6,7 @@
 #include <std-display.h>
 
 //Add an std string
-struct std_string *addStdString(struct std_string *head, char *string, struct std_settings* s) {
+struct std_string *addStdString(struct std_string *head, char *string, char *from, struct std_settings* s) {
 	//Allocate memory for new string	
 	struct std_string *newStdString = malloc(sizeof(struct std_string));
 	if (newStdString == NULL) {
@@ -15,6 +15,7 @@ struct std_string *addStdString(struct std_string *head, char *string, struct st
 	}
 	//Copy new string into new string struct
 	strcpy(newStdString->string, string);
+	strcpy(newStdString->from, from);
 	//Find last item in list
 	if (head != NULL) {
 		printf("Finding last string\n");
@@ -44,10 +45,10 @@ void writeQuotesToFile(struct std_string *head) {
 
 	struct std_string *currStr = head;
 	while(currStr->next != head) {
-		fprintf(fp, "%s\n", currStr->string);
+		fprintf(fp, "%s\t%s\n", currStr->from, currStr->string);
 		currStr = currStr->next;
 	}
-	fprintf(fp, "%s\n", currStr->string);
+	fprintf(fp, "%s\t%s\n", currStr->from, currStr->string);
 	fclose(fp);
 }
 
@@ -67,7 +68,7 @@ int nrOfQuotes(struct std_string *head) {
 
 //Get telegram bot messages
 int getMessages(telebot_handler_t handle, int offset, struct std_settings* s) {
-	int count  = -1;
+	int count = -1;
 	telebot_update_t *updates;
 	telebot_message_t message;
 	telebot_document_t *document;
@@ -211,7 +212,7 @@ int getMessages(telebot_handler_t handle, int offset, struct std_settings* s) {
 					quote = strtok(message.text, delim);
 					while (quote != NULL) {
 						printf("Adding quote: %s\n", quote);
-						addStdString(s->stringsHead, quote, s);
+						addStdString(s->stringsHead, quote, message.from->first_name, s);
 						quote = strtok(NULL, delim);
 					}
 					//Write quotes to file

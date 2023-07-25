@@ -48,7 +48,7 @@ void *telebotThread(void *std_settings) {
 	while(keepRunning) {
 		offset = getMessages(telegramBot, offset, (struct std_settings *) std_settings);
 		//Wait a small time
-		sleep(5);
+		sleep(60);
 	}
 	//Destroy Telegram bot
 	telebot_destroy(telegramBot);
@@ -60,6 +60,7 @@ void readQuotesFromFile(struct std_settings* s) {
 	FILE *fp;
 	struct std_string *head = NULL;
 	char * line = NULL;
+	const char delim[2] = "\t";
 	size_t len = 0;
 	ssize_t read;
 	fp = fopen("quotes.txt", "r");
@@ -69,8 +70,10 @@ void readQuotesFromFile(struct std_settings* s) {
 	while ((read = getline(&line, &len, fp)) != -1) {
 		//Remove weird last character
 		line[strlen(line)-1] = 0;
-        	printf("Adding quote: %s", line);
-		addStdString(s->stringsHead, line, s);
+		char *from = strtok(line, delim);
+		char *quote = strtok(NULL, delim);
+        	printf("Adding message from %s: %s", from, quote);
+		addStdString(s->stringsHead, quote, from, s);
     	}
 
 	fclose(fp);
@@ -100,6 +103,8 @@ int main(int argc, char **argv) {
 	unsigned long counter = 0;
 	unsigned long smallCounter = 0;
 	int err;
+	bool scrollingText = 0;
+	time_t secondOfMinute = 0;
 
 	//String that is to be displayed
 	readQuotesFromFile(std_settings);;
@@ -107,16 +112,15 @@ int main(int argc, char **argv) {
 	
 	//Create the buffer that stores the bits (textBuffer[row][col])
 	bool** textBuffer = createBuffer();
-	//Create the telegram bot thread that checks for new messages QUOTES ARE DISABLED
-	//err = pthread_create(&tid, NULL, telebotThread, (void *)std_settings);
+	//Create the telegram bot thread that checks for new messages
+	err = pthread_create(&tid, NULL, telebotThread, (void *)std_settings);
 	//Show the buffer
 	while (keepRunning) {
 		//Clear the buffer
 		clearBuffer(textBuffer);
-		//NOTE! Quotes are disabled in the next line!
-		if (currentHead != NULL && 0) {
+		if (currentHead != NULL && scrollingText) {
 			//Test new function that uses the string struct
-			stdStringToBuffer(*std_settings, textBuffer, currentHead, counter);	
+			singleStdStringToBuffer(*std_settings, textBuffer, currentHead, counter);
 			//Show the buffer
 			showBuffer(*std_settings, textBuffer);
 			
@@ -125,20 +129,29 @@ int main(int argc, char **argv) {
 				smallCounter = 0;
 				counter++;
 			}
-			//Keep attention to the extra characters added by the time
-			if (counter > getStringCols(currentHead->string, std_settings->colsBetweenLetters) + 14*(5+std_settings->colsBetweenLetters) - 1) {
+			//Pay attention to the extra characters added by the time
+			//if (counter > getStringCols(currentHead->string, std_settings->colsBetweenLetters) + 14*(5+std_settings->colsBetweenLetters) - 1) {
+			if (counter > (getStringCols(currentHead->string, std_settings->colsBetweenLetters) + getStringCols(currentHead->from, std_settings->colsBetweenLetters) + (19+3)*(5+std_settings->colsBetweenLetters) + 5)) {
 				currentHead = currentHead->next;
 				counter = 0;
+				scrollingText = false;
 			}
 		}
 		else {
 			//Get time
-			char* time = currentTime("%H:%M:%S  %d-%m");
+			char* timeDate = currentTime("%H:%M:%S  %d-%m");
 			//Show time
-			showText(*std_settings, textBuffer, time);
-			free(time);
+			showText(*std_settings, textBuffer, timeDate);
+			free(timeDate);
 			//Set current head (not NULL when a message is received)
-			currentHead = std_settings->stringsHead;
+			if (currentHead == NULL) {
+				currentHead = std_settings->stringsHead;
+			}
+			//Scroll text after an interval (currently 10 seconds for testing)
+			secondOfMinute = time(NULL) % 60;
+			if (secondOfMinute == 0) {
+				scrollingText = true;
+			}
 		}
 	}
 	//Clear contents in shift registers
